@@ -18,6 +18,7 @@
 
 #include "QGCApplication.h"
 
+#include <QtCore/QTimer>
 #include <QtCore/QEvent>
 #include <QtCore/QFile>
 #include <QtCore/QMetaMethod>
@@ -35,8 +36,11 @@
 #include <QtCore/private/qthread_p.h>
 
 #include "QGCLogging.h"
+#include "AILogAnalyzeController.h"
+#include "AILogBackendManager.h"
 #include "AudioOutput.h"
 #include "AutoPilotPlugin.h"
+#include "ChineseMessageTranslator.h"
 #include "CmdLineOptParser.h"
 #include "ESP8266ComponentController.h"
 #include "FollowMe.h"
@@ -214,10 +218,9 @@ void QGCApplication::setLanguage()
     _locale = QLocale::system();
     qCDebug(QGCApplicationLog) << "System reported locale:" << _locale << "; Name" << _locale.name() << "; Preffered (used in maps): " << (QLocale::system().uiLanguages().length() > 0 ? QLocale::system().uiLanguages()[0] : "None");
 
-    QLocale::Language possibleLocale = AppSettings::_qLocaleLanguageEarlyAccess();
-    if (possibleLocale != QLocale::AnyLanguage) {
-        _locale = QLocale(possibleLocale);
-    }
+    // Custom Chinese build: always prefer Simplified Chinese for the UI,
+    // regardless of Windows locale or a previous QGC language setting.
+    _locale = QLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China);
     //-- We have specific fonts for Korean
     if (_locale == QLocale::Korean) {
         qCDebug(QGCApplicationLog) << "Loading Korean fonts" << _locale.name();
@@ -260,7 +263,7 @@ void QGCApplication::setLanguage()
 
 QGCApplication::~QGCApplication()
 {
-
+    AILogBackendManager::instance()->stopIfOwnedByQGC();
 }
 
 void QGCApplication::init()
@@ -292,7 +295,7 @@ void QGCApplication::init()
     qmlRegisterType<GeoTagController>("QGroundControl.Controllers", 1, 0, "GeoTagController");
     qmlRegisterType<LogDownloadController>("QGroundControl.Controllers", 1, 0, "LogDownloadController");
     qmlRegisterType<MAVLinkConsoleController>("QGroundControl.Controllers", 1, 0, "MAVLinkConsoleController");
-
+    qmlRegisterType<AILogAnalyzeController>("QGroundControl.Controllers", 1, 0, "AILogAnalyzeController");
 
     qmlRegisterUncreatableType<AutoPilotPlugin>("QGroundControl.AutoPilotPlugin", 1, 0, "AutoPilotPlugin", "Reference only");
     qmlRegisterType<ESP8266ComponentController>("QGroundControl.Controllers", 1, 0, "ESP8266ComponentController");
@@ -351,7 +354,9 @@ void QGCApplication::_initForNormalAppBoot()
     QObject::connect(_qmlAppEngine, &QQmlApplicationEngine::objectCreationFailed, this, QCoreApplication::quit, Qt::QueuedConnection);
     QGCCorePlugin::instance()->createRootWindow(_qmlAppEngine);
 
-    AudioOutput::instance()->init(SettingsManager::instance()->appSettings()->audioMuted());
+    AudioOutput::instance()->init(SettingsManager::instance()->appSettings()->audioMuted(),
+                                  SettingsManager::instance()->appSettings()->voiceStyle(),
+                                  SettingsManager::instance()->appSettings()->dongbeiAudioPackPath());
     FollowMe::instance()->init();
     QGCPositionManager::instance()->init();
     LinkManager::instance()->init();
@@ -467,14 +472,15 @@ void QGCApplication::showCriticalVehicleMessage(const QString &message)
         return;
     }
 
+    const QString translatedMessage = ChineseMessageTranslator::explain(message);
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject && _showErrorsInToolbar) {
         QVariant varReturn;
-        QVariant varMessage = QVariant::fromValue(message);
+        QVariant varMessage = QVariant::fromValue(translatedMessage);
         QMetaObject::invokeMethod(rootQmlObject, "showCriticalVehicleMessage", Q_RETURN_ARG(QVariant, varReturn), Q_ARG(QVariant, varMessage));
     } else if (runningUnitTests() || !_showErrorsInToolbar) {
         // Unit tests can run without UI
-        qCDebug(QGCApplicationLog) << "QGCApplication::showCriticalVehicleMessage unittest" << message;
+        qCDebug(QGCApplicationLog) << "QGCApplication::showCriticalVehicleMessage unittest" << translatedMessage;
     } else {
         qCWarning(QGCApplicationLog) << "Internal error";
     }
@@ -482,19 +488,21 @@ void QGCApplication::showCriticalVehicleMessage(const QString &message)
 
 void QGCApplication::showAppMessage(const QString &message, const QString &title)
 {
-    const QString dialogTitle = title.isEmpty() ? applicationName() : title;
+    const bool titleIsApplicationName = title.isEmpty() || (title == applicationName()) || title.contains(QStringLiteral("QGroundControl"), Qt::CaseInsensitive);
+    const QString dialogTitle = titleIsApplicationName ? applicationName() : ChineseMessageTranslator::explain(title);
+    const QString translatedMessage = ChineseMessageTranslator::explain(message);
 
     QObject *const rootQmlObject = _rootQmlObject();
     if (rootQmlObject) {
         QVariant varReturn;
-        QVariant varMessage = QVariant::fromValue(message);
+        QVariant varMessage = QVariant::fromValue(translatedMessage);
         QMetaObject::invokeMethod(rootQmlObject, "_showMessageDialog", Q_RETURN_ARG(QVariant, varReturn), Q_ARG(QVariant, dialogTitle), Q_ARG(QVariant, varMessage));
     } else if (runningUnitTests()) {
         // Unit tests can run without UI
-        qCDebug(QGCApplicationLog) << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << message;
+        qCDebug(QGCApplicationLog) << "QGCApplication::showAppMessage unittest title:message" << dialogTitle << translatedMessage;
     } else {
         // UI isn't ready yet
-        _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, message));
+        _delayedAppMessages.append(QPair<QString, QString>(dialogTitle, translatedMessage));
         QTimer::singleShot(200, this, &QGCApplication::_showDelayedAppMessages);
     }
 }
@@ -750,6 +758,8 @@ QGCImageProvider *QGCApplication::qgcImageProvider()
 void QGCApplication::shutdown()
 {
     qCDebug(QGCApplicationLog) << "Exit";
+
+    AILogBackendManager::instance()->stopIfOwnedByQGC();
 
     if (_videoManagerInitialized) {
         VideoManager::instance()->cleanup();

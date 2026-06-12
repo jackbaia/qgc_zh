@@ -34,6 +34,15 @@ TextArea {
 
     property var _fact: null
 
+    function parameterNameFromLink(link) {
+        var paramMatch = link.match(/param:\/\/([A-Za-z0-9_]+)/)
+        if (paramMatch && paramMatch.length > 1) {
+            return paramMatch[1]
+        }
+        paramMatch = link.match(/([A-Z][A-Z0-9]+_[A-Z0-9_]+)/)
+        return paramMatch && paramMatch.length > 1 ? paramMatch[1] : ""
+    }
+
     function formatMessage(message) {
         message = message.replace(new RegExp("<#E>", "g"), "color: " + qgcPal.warningText + "; font: " + (ScreenTools.defaultFontPointSize.toFixed(0) - 1) + "pt monospace;");
         message = message.replace(new RegExp("<#I>", "g"), "color: " + qgcPal.warningText + "; font: " + (ScreenTools.defaultFontPointSize.toFixed(0) - 1) + "pt monospace;");
@@ -58,12 +67,14 @@ TextArea {
     }
 
     onLinkActivated: (link) => {
-        if (link.startsWith('param://')) {
-            var paramName = link.substr(8);
+        var paramName = parameterNameFromLink(link)
+        if (paramName !== "") {
             _fact = controller.getParameterFact(-1, paramName, true)
             if (_fact != null) {
                 paramEditorDialogComponent.createObject(mainWindow).open()
             }
+        } else if (link.startsWith('qrc:')) {
+            // Ignore internal qrc links here. Parameter links are handled above.
         } else {
             Qt.openUrlExternally(link);
         }

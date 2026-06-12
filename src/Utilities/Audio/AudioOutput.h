@@ -11,8 +11,10 @@
 
 #include <QtCore/QLoggingCategory>
 #include <QtCore/QObject>
+#include <QtCore/QHash>
 
 class QTextToSpeech;
+class QSoundEffect;
 class Fact;
 class AudioOutputTest;
 
@@ -46,7 +48,7 @@ public:
     static AudioOutput *instance();
 
     /// Initialize the Singleton
-    void init(Fact *mutedFact);
+    void init(Fact *mutedFact, Fact *voiceStyleFact = nullptr, Fact *audioPackPathFact = nullptr);
 
     /// Checks if the audio output is muted.
     ///     @return True if muted, false otherwise.
@@ -60,12 +62,24 @@ public:
     ///     @param text The text to be read.
     ///     @param textMods The text modifications to apply.
     void say(const QString &text, TextMods textMods = TextMod::None);
+    bool playAudioPackEventForTest(const QString &eventKey);
 
 private:
+    enum VoiceStyle {
+        SystemTTS = 0,
+        ChineseTTS = 1,
+        DongbeiAudioPack = 2,
+    };
+
     QTextToSpeech *_engine = nullptr;
+    QSoundEffect *_audioPackEffect = nullptr;
+    Fact *_voiceStyleFact = nullptr;
+    Fact *_audioPackPathFact = nullptr;
     QAtomicInteger<qsizetype> _textQueueSize = 0;
     bool _initialized = false;
     std::atomic_bool _muted = false;
+    QString _manifestRootPath;
+    QHash<QString, QString> _manifestEventFiles;
 
     static const QHash<QString, QString> _textHash;
 
@@ -99,6 +113,14 @@ private:
     ///     @param number The extracted number.
     ///     @return True if extraction is successful, false otherwise.
     static bool _getMillisecondString(const QString &string, QString &match, int &number);
+
+    int _voiceStyle() const;
+    void _applyTtsLocale();
+    bool _playAudioPackEvent(const QString &eventKey);
+    QString _detectAudioEventKey(const QString &text) const;
+    QString _audioPackRootPath() const;
+    QString _audioFileForEvent(const QString &eventKey);
+    bool _loadAudioPackManifest(const QString &rootPath);
 
 };
 Q_DECLARE_OPERATORS_FOR_FLAGS(AudioOutput::TextMods)

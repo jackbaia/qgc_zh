@@ -13,7 +13,16 @@
 #include "QGCApplication.h"
 
 #include <QtCore/QRegularExpression>
+#include <QtCore/QCoreApplication>
+#include <QtCore/QDir>
+#include <QtCore/QFile>
+#include <QtCore/QFileInfo>
+#include <QtCore/QJsonDocument>
+#include <QtCore/QJsonObject>
+#include <QtCore/QIODevice>
+#include <QtCore/QUrl>
 #include <QtCore/qapplicationstatic.h>
+#include <QtMultimedia/QSoundEffect>
 #include <QtTextToSpeech/QTextToSpeech>
 
 QGC_LOGGING_CATEGORY(AudioOutputLog, "qgc.audio.audiooutput");
@@ -46,8 +55,10 @@ Q_APPLICATION_STATIC(AudioOutput, _audioOutput);
 AudioOutput::AudioOutput(QObject *parent)
     : QObject(parent)
     , _engine(new QTextToSpeech(QStringLiteral("none"), this))
+    , _audioPackEffect(new QSoundEffect(this))
 {
     // qCDebug(AudioOutputLog) << this;
+    _audioPackEffect->setLoopCount(1);
 }
 
 AudioOutput::~AudioOutput()
@@ -60,7 +71,7 @@ AudioOutput *AudioOutput::instance()
     return _audioOutput();
 }
 
-void AudioOutput::init(Fact *mutedFact)
+void AudioOutput::init(Fact *mutedFact, Fact *voiceStyleFact, Fact *audioPackPathFact)
 {
     Q_CHECK_PTR(mutedFact);
 
@@ -93,8 +104,27 @@ void AudioOutput::init(Fact *mutedFact)
         qCDebug(AudioOutputLog) << "Queue Size:" << _textQueueSize;
     });
 
+    _voiceStyleFact = voiceStyleFact;
+    _audioPackPathFact = audioPackPathFact;
+
     (void) connect(mutedFact, &Fact::valueChanged, this, [this](QVariant value) {
         setMuted(value.toBool());
+    });
+    if (_voiceStyleFact) {
+        (void) connect(_voiceStyleFact, &Fact::valueChanged, this, [this](QVariant) {
+            _applyTtsLocale();
+        });
+    }
+    if (_audioPackPathFact) {
+        (void) connect(_audioPackPathFact, &Fact::valueChanged, this, [this](QVariant) {
+            _manifestRootPath.clear();
+            _manifestEventFiles.clear();
+        });
+    }
+    (void) connect(_audioPackEffect, &QSoundEffect::statusChanged, this, [this]() {
+        if (_audioPackEffect->status() == QSoundEffect::Error) {
+            qCWarning(AudioOutputLog) << "Audio pack playback error:" << _audioPackEffect->source();
+        }
     });
 
     if (AudioOutputLog().isDebugEnabled()) {
@@ -116,6 +146,7 @@ void AudioOutput::init(Fact *mutedFact)
     }
 
     setMuted(mutedFact->rawValue().toBool());
+    _applyTtsLocale();
     _initialized = true;
 
     qCDebug(AudioOutputLog) << "AudioOutput initialized with muted state:" << _muted;
@@ -125,6 +156,7 @@ void AudioOutput::setMuted(bool muted)
 {
     if (_muted.exchange(muted) != muted) {
         (void) QMetaObject::invokeMethod(_engine, "setVolume", Qt::AutoConnection, muted ? 0.0 : 1.0);
+        _audioPackEffect->setVolume(muted ? 0.0f : 1.0f);
         qCDebug(AudioOutputLog) << "AudioOutput muted state set to:" << muted;
     }
 }
@@ -142,13 +174,9 @@ void AudioOutput::say(const QString &text, TextMods textMods)
         return;
     }
 
-    if (!_engine->engineCapabilities().testFlag(QTextToSpeech::Capability::Speak)) {
-        qCWarning(AudioOutputLog) << "Speech Not Supported:" << text;
-        return;
-    }
-
     if (_textQueueSize >= kMaxTextQueueSize) {
         (void) QMetaObject::invokeMethod(_engine, "stop", Qt::AutoConnection, QTextToSpeech::BoundaryHint::Default);
+        _audioPackEffect->stop();
         _textQueueSize = 0;
         qCWarning(AudioOutputLog) << "Text queue exceeded maximum size. Stopped current speech.";
     }
@@ -159,6 +187,20 @@ void AudioOutput::say(const QString &text, TextMods textMods)
         outText = tr("%1").arg(outText);
     }
 
+    if (_voiceStyle() == DongbeiAudioPack) {
+        const QString eventKey = _detectAudioEventKey(outText);
+        if (!eventKey.isEmpty() && _playAudioPackEvent(eventKey)) {
+            return;
+        }
+    }
+
+    if (!_engine->engineCapabilities().testFlag(QTextToSpeech::Capability::Speak)) {
+        qCWarning(AudioOutputLog) << "Speech Not Supported:" << text;
+        return;
+    }
+
+    _applyTtsLocale();
+
     qsizetype index;
     if (QMetaObject::invokeMethod(_engine, "enqueue", Qt::AutoConnection, qReturnArg(index), outText)) {
         if (index != -1) {
@@ -168,6 +210,15 @@ void AudioOutput::say(const QString &text, TextMods textMods)
     } else {
         qCWarning(AudioOutputLog) << "Failed to invoke Enqueue method.";
     }
+}
+
+bool AudioOutput::playAudioPackEventForTest(const QString &eventKey)
+{
+    if (_muted) {
+        return false;
+    }
+
+    return _playAudioPackEvent(eventKey);
 }
 
 QString AudioOutput::_fixTextMessageForAudio(const QString &string)
@@ -285,4 +336,201 @@ bool AudioOutput::_getMillisecondString(const QString &string, QString &match, i
     }
 
     return result;
+}
+
+int AudioOutput::_voiceStyle() const
+{
+    return _voiceStyleFact ? _voiceStyleFact->rawValue().toInt() : SystemTTS;
+}
+
+void AudioOutput::_applyTtsLocale()
+{
+    if (!_engine) {
+        return;
+    }
+
+    const int style = _voiceStyle();
+    if ((style == ChineseTTS) || (style == DongbeiAudioPack)) {
+        const QLocale chineseLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China);
+        if (_engine->availableLocales().contains(chineseLocale) && (_engine->locale() != chineseLocale)) {
+            _engine->setLocale(chineseLocale);
+        }
+    }
+}
+
+bool AudioOutput::_playAudioPackEvent(const QString &eventKey)
+{
+    const QString audioFile = _audioFileForEvent(eventKey);
+    if (audioFile.isEmpty() || !QFileInfo::exists(audioFile)) {
+        qCDebug(AudioOutputLog) << "Audio pack file not found for event:" << eventKey << audioFile;
+        return false;
+    }
+
+    _audioPackEffect->stop();
+    _audioPackEffect->setSource(QUrl::fromLocalFile(audioFile));
+    if (_audioPackEffect->status() == QSoundEffect::Error) {
+        qCWarning(AudioOutputLog) << "Audio pack file could not be loaded:" << audioFile;
+        return false;
+    }
+
+    _audioPackEffect->play();
+    qCDebug(AudioOutputLog) << "Playing audio pack event:" << eventKey << audioFile;
+    return true;
+}
+
+QString AudioOutput::_detectAudioEventKey(const QString &text) const
+{
+    QString normalized = text.toLower();
+    normalized.replace('_', ' ');
+    normalized.replace('-', ' ');
+
+    const auto hasAny = [&normalized](std::initializer_list<const char*> words) {
+        for (const char *word: words) {
+            if (normalized.contains(QString::fromUtf8(word))) {
+                return true;
+            }
+        }
+        return false;
+    };
+
+    if (hasAny({"emergency kill", "kill switch", "flight termination", "紧急停机", "急停"})) {
+        return QStringLiteral("emergency_kill");
+    }
+    if (hasAny({"prearm", "pre arm", "preflight check", "arming check", "解锁检查", "预解锁"}) &&
+            hasAny({"fail", "failed", "denied", "reject", "失败", "未通过", "拒绝"})) {
+        return QStringLiteral("prearm_failed");
+    }
+    if (hasAny({"battery critical", "critical battery", "critical low battery", "电池严重", "严重低电量"})) {
+        return QStringLiteral("battery_critical");
+    }
+    if (hasAny({"battery low", "low battery", "low voltage", "电池电量低", "低电量", "低电压"})) {
+        return QStringLiteral("battery_low");
+    }
+    if (hasAny({"gps regained", "gps recovered", "gps signal restored", "gps 恢复", "gps信号恢复"})) {
+        return QStringLiteral("gps_recovered");
+    }
+    if (hasAny({"gps lost", "gps failure", "gps signal lost", "no gps", "gps 丢失", "gps信号丢失", "gps 信号丢失"})) {
+        return QStringLiteral("gps_lost");
+    }
+    if (hasAny({"radio regained", "rc regained", "rc recovered", "manual control regained", "遥控恢复", "遥控信号恢复"})) {
+        return QStringLiteral("rc_recovered");
+    }
+    if (hasAny({"radio lost", "rc lost", "manual control lost", "communication lost", "遥控丢失", "遥控信号丢失", "通信丢失"})) {
+        return QStringLiteral("rc_lost");
+    }
+    if (hasAny({"failsafe", "fail safe", "失效保护", "故障保护"})) {
+        return QStringLiteral("failsafe");
+    }
+    if (hasAny({"ekf", "estimator", "innovation", "状态估计"})) {
+        return QStringLiteral("ekf_warning");
+    }
+    if (hasAny({"compass", "mag", "magnetometer", "磁罗盘", "磁力计"})) {
+        return QStringLiteral("compass_error");
+    }
+    if (hasAny({"airspeed", "pitot", "空速"})) {
+        return QStringLiteral("airspeed_warning");
+    }
+    if (hasAny({"takeoff", "take off", "起飞"})) {
+        return QStringLiteral("takeoff");
+    }
+    if (hasAny({"landing", "land", "降落", "着陆"})) {
+        return QStringLiteral("landing");
+    }
+    if (hasAny({"log analysis started", "开始分析飞行日志", "日志分析开始"})) {
+        return QStringLiteral("log_analysis_started");
+    }
+    if (hasAny({"log analysis finished", "日志分析完成", "完成分析飞行日志"})) {
+        return QStringLiteral("log_analysis_finished");
+    }
+    if (hasAny({"return to launch", "rtl", "返航"})) {
+        return QStringLiteral("mode_rtl");
+    }
+    if (hasAny({"offboard", "external control", "外部控制"})) {
+        return QStringLiteral("mode_offboard");
+    }
+    if (hasAny({"mission flight mode", "mission mode", "任务模式", "航线任务"})) {
+        return QStringLiteral("mode_mission");
+    }
+    if (hasAny({"position control", "position flight mode", "position mode", "位置模式"})) {
+        return QStringLiteral("mode_position");
+    }
+    if (hasAny({"altitude control", "altitude flight mode", "altitude mode", "高度模式"})) {
+        return QStringLiteral("mode_altitude");
+    }
+    if (hasAny({"stabilized", "stabilize", "姿态模式", "自稳"})) {
+        return QStringLiteral("mode_stabilized");
+    }
+    if (hasAny({"manual flight mode", "manual mode", "手动模式"})) {
+        return QStringLiteral("mode_manual");
+    }
+    if (hasAny({"disarmed", "disarm", "上锁", "锁定电机"})) {
+        return QStringLiteral("disarm");
+    }
+    if (hasAny({"armed", "arm success", "解锁成功", "已解锁"})) {
+        return QStringLiteral("arm_success");
+    }
+
+    return QString();
+}
+
+QString AudioOutput::_audioPackRootPath() const
+{
+    const QString configuredPath = _audioPackPathFact ? _audioPackPathFact->rawValue().toString() : QString();
+    if (!configuredPath.isEmpty()) {
+        const QUrl url(configuredPath);
+        return url.isLocalFile() ? url.toLocalFile() : configuredPath;
+    }
+
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("audio/dongbei"));
+}
+
+QString AudioOutput::_audioFileForEvent(const QString &eventKey)
+{
+    const QString rootPath = _audioPackRootPath();
+    if (!_loadAudioPackManifest(rootPath)) {
+        return QDir(rootPath).filePath(eventKey + QStringLiteral(".wav"));
+    }
+
+    const QString manifestFile = _manifestEventFiles.value(eventKey);
+    if (!manifestFile.isEmpty()) {
+        return QDir(rootPath).filePath(manifestFile);
+    }
+
+    return QDir(rootPath).filePath(eventKey + QStringLiteral(".wav"));
+}
+
+bool AudioOutput::_loadAudioPackManifest(const QString &rootPath)
+{
+    if (_manifestRootPath == rootPath) {
+        return !_manifestEventFiles.isEmpty();
+    }
+
+    _manifestRootPath = rootPath;
+    _manifestEventFiles.clear();
+
+    QFile manifestFile(QDir(rootPath).filePath(QStringLiteral("manifest.json")));
+    if (!manifestFile.exists()) {
+        return false;
+    }
+    if (!manifestFile.open(QIODevice::ReadOnly)) {
+        qCWarning(AudioOutputLog) << "Failed to open audio pack manifest:" << manifestFile.fileName();
+        return false;
+    }
+
+    const QJsonDocument manifest = QJsonDocument::fromJson(manifestFile.readAll());
+    if (!manifest.isObject()) {
+        qCWarning(AudioOutputLog) << "Invalid audio pack manifest:" << manifestFile.fileName();
+        return false;
+    }
+
+    const QJsonObject events = manifest.object().value(QStringLiteral("events")).toObject();
+    for (auto it = events.begin(); it != events.end(); ++it) {
+        const QJsonObject event = it.value().toObject();
+        const QString fileName = event.value(QStringLiteral("file")).toString();
+        if (!fileName.isEmpty()) {
+            _manifestEventFiles.insert(it.key(), fileName);
+        }
+    }
+
+    return !_manifestEventFiles.isEmpty();
 }

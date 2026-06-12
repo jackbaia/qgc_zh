@@ -34,6 +34,7 @@
 #include "QGC.h"
 #include "QGCApplication.h"
 #include "QGCCameraManager.h"
+#include "ChineseMessageTranslator.h"
 #include "QGCCorePlugin.h"
 #include "QGCImageProvider.h"
 #include "QGCLoggingCategory.h"
@@ -4295,6 +4296,8 @@ void Vehicle::_textMessageReceived(MAV_COMPONENT componentid, MAV_SEVERITY sever
     bool skipSpoken = false;
     const bool ardupilotPrearm = text.startsWith(QStringLiteral("PreArm"));
     const bool px4Prearm = text.startsWith(QStringLiteral("preflight"), Qt::CaseInsensitive) && (severity >= MAV_SEVERITY::MAV_SEVERITY_CRITICAL);
+    QString translatedText = ChineseMessageTranslator::explain(text);
+    const QString translatedDescription = ChineseMessageTranslator::explain(description);
     if (ardupilotPrearm || px4Prearm) {
         auto eventData = _events.find(componentid);
         if (eventData != _events.end()) {
@@ -4309,7 +4312,7 @@ void Vehicle::_textMessageReceived(MAV_COMPONENT componentid, MAV_SEVERITY sever
             skipSpoken = true;
         } else {
             (void) _noisySpokenPrearmMap.insert(text, QTime::currentTime());
-            setPrearmError(text);
+            setPrearmError(translatedText);
         }
     }
 
@@ -4317,16 +4320,19 @@ void Vehicle::_textMessageReceived(MAV_COMPONENT componentid, MAV_SEVERITY sever
 
     if (text.startsWith("#")) {
         (void) text.remove(0, 1);
+        if (translatedText.startsWith("#")) {
+            (void) translatedText.remove(0, 1);
+        }
         readAloud = true;
     } else if (severity <= MAV_SEVERITY::MAV_SEVERITY_NOTICE) {
         readAloud = true;
     }
 
     if (readAloud && !skipSpoken) {
-        _say(text);
+        _say(translatedText);
     }
 
-    emit textMessageReceived(id(), componentid, severity, text, description);
+    emit textMessageReceived(id(), componentid, severity, translatedText, translatedDescription);
     m_statusTextHandler->handleHTMLEscapedTextMessage(componentid, severity, text.toHtmlEscaped(), description);
 }
 

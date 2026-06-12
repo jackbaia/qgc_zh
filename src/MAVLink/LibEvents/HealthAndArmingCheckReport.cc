@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "HealthAndArmingCheckReport.h"
+#include "ChineseMessageTranslator.h"
 #include "QGCMAVLink.h"
 #include "QmlObjectListModel.h"
 
@@ -58,8 +59,9 @@ void HealthAndArmingCheckReport::update(uint8_t compid, const events::HealthAndA
             severity = "warning";
             _hasWarningsOrErrors = true;
         }
-        QString description = QString::fromStdString(check.description);
-        _problemsForCurrentMode->append(new HealthAndArmingCheckProblem(QString::fromStdString(check.message),
+        QString description = ChineseMessageTranslator::explain(QString::fromStdString(check.description));
+        const QString message = ChineseMessageTranslator::explain(QString::fromStdString(check.message));
+        _problemsForCurrentMode->append(new HealthAndArmingCheckProblem(message,
                 description.replace("\n", "<br/>"), severity));
     }
 

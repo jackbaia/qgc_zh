@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "AppSettings.h"
+#include "AudioOutput.h"
 #include "QGCPalette.h"
 #include "QGCApplication.h"
 #include "QGCMAVLink.h"
@@ -21,6 +22,7 @@
 #include <QtCore/QStandardPaths>
 #include <QtCore/QDir>
 #include <QtCore/QSettings>
+#include <QtCore/QCoreApplication>
 
 // Release languages are 90%+ complete
 QList<QLocale::Language> AppSettings::_rgReleaseLanguages = {
@@ -148,6 +150,8 @@ DECLARE_SETTINGSFACT(AppSettings, offlineEditingDescentSpeed)
 DECLARE_SETTINGSFACT(AppSettings, batteryPercentRemainingAnnounce)
 DECLARE_SETTINGSFACT(AppSettings, defaultMissionItemAltitude)
 DECLARE_SETTINGSFACT(AppSettings, audioMuted)
+DECLARE_SETTINGSFACT(AppSettings, voiceStyle)
+DECLARE_SETTINGSFACT(AppSettings, dongbeiAudioPackPath)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystick)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickAutoCenterThrottle)
 DECLARE_SETTINGSFACT(AppSettings, virtualJoystickLeftHandedMode)
@@ -359,6 +363,28 @@ void AppSettings::firstRunPromptIdsMarkIdAsShown(int id)
         rgIds.append(id);
         firstRunPromptIdsShown()->setRawValue(firstRunPromptsIdsListToVariant(rgIds));
     }
+}
+
+QString AppSettings::defaultDongbeiAudioPackPath() const
+{
+    return QDir(QCoreApplication::applicationDirPath()).filePath(QStringLiteral("audio/dongbei"));
+}
+
+QString AppSettings::effectiveDongbeiAudioPackPath() const
+{
+    const QString configuredPath = const_cast<AppSettings*>(this)->dongbeiAudioPackPath()->rawValue().toString();
+    return configuredPath.isEmpty() ? defaultDongbeiAudioPackPath() : configuredPath;
+}
+
+QString AppSettings::testDongbeiAudioPack()
+{
+    const bool played = AudioOutput::instance()->playAudioPackEventForTest(QStringLiteral("arm_success"));
+    if (played) {
+        return tr("Dongbei audio pack test started.");
+    }
+
+    AudioOutput::instance()->say(tr("Dongbei audio pack file was not found. Falling back to TTS."));
+    return tr("Dongbei audio pack file was not found. Falling back to TTS.");
 }
 
 /// Returns the current qLocaleLanguage setting bypassing the standard SettingsGroup path. It also validates

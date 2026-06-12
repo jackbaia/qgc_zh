@@ -1,4 +1,4 @@
-/****************************************************************************
+﻿/****************************************************************************
  *
  * (c) 2009-2024 QGROUNDCONTROL PROJECT <http://www.qgroundcontrol.org>
  *
@@ -9,6 +9,7 @@
 
 #include "QGCCorePlugin.h"
 #include "QGCLogging.h"
+
 #include "AppSettings.h"
 #include "MavlinkSettings.h"
 #include "FactMetaData.h"
@@ -82,6 +83,10 @@ const QVariantList &QGCCorePlugin::analyzePages()
         QVariant::fromValue(new QmlComponentInfo(
             tr("Log Download"),
             QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/LogDownloadPage.qml")),
+            QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/LogDownloadIcon.svg")))),
+        QVariant::fromValue(new QmlComponentInfo(
+            tr("AI \u65e5\u5fd7\u5206\u6790"),
+            QUrl::fromUserInput(QStringLiteral("qrc:/qml/QGroundControl/AnalyzeView/AILogAnalyzePage.qml")),
             QUrl::fromUserInput(QStringLiteral("qrc:/qmlimages/LogDownloadIcon.svg")))),
 #if !defined(Q_OS_ANDROID) && !defined(Q_OS_IOS)
         QVariant::fromValue(new QmlComponentInfo(
@@ -369,3 +374,4 @@ void QGCCorePlugin::_setShowAdvancedUI(bool show)
         emit showAdvancedUIChanged(show);
     }
 }
+

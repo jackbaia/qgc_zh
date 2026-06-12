@@ -1,5 +1,9 @@
 target_sources(${CMAKE_PROJECT_NAME}
     PRIVATE
+        AILogAnalyzeController.cc
+        AILogAnalyzeController.h
+        AILogBackendManager.cc
+        AILogBackendManager.h
         ExifParser.cc
         ExifParser.h
         GeoTagController.cc
@@ -37,6 +41,7 @@ qt_add_qml_module(AnalyzeViewModule
     VERSION 1.0
     RESOURCE_PREFIX /qml
     QML_FILES
+        AILogAnalyzePage.qml
         AnalyzeView.qml
         GeoTagPage.qml
         LogDownloadPage.qml

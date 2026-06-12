@@ -29,6 +29,8 @@ SettingsPage {
     property Fact   _userBrandImageIndoor:      _brandImageSettings.userBrandImageIndoor
     property Fact   _userBrandImageOutdoor:     _brandImageSettings.userBrandImageOutdoor
     property Fact   _appSavePath:               _appSettings.savePath
+    property Fact   _voiceStyle:                _appSettings.voiceStyle
+    property Fact   _dongbeiAudioPackPath:      _appSettings.dongbeiAudioPackPath
 
     SettingsGroupLayout {
         Layout.fillWidth:   true
@@ -61,6 +63,49 @@ SettingsPage {
             fact:       _audioMuted
             visible:    _audioMuted.visible
             property Fact _audioMuted: _appSettings.audioMuted
+        }
+
+        LabelledFactComboBox {
+            label:      qsTr("Voice Style")
+            fact:       _voiceStyle
+            indexModel: false
+            visible:    _voiceStyle.visible
+        }
+
+        RowLayout {
+            Layout.fillWidth:   true
+            spacing:            ScreenTools.defaultFontPixelWidth * 2
+            visible:            _dongbeiAudioPackPath.visible && !ScreenTools.isMobile
+
+            ColumnLayout {
+                Layout.fillWidth:   true
+                spacing:            0
+
+                QGCLabel { text: qsTr("Dongbei Audio Pack Path") }
+                QGCLabel {
+                    Layout.fillWidth:   true
+                    font.pointSize:     ScreenTools.smallFontPointSize
+                    text:               _dongbeiAudioPackPath.rawValue === "" ? _appSettings.defaultDongbeiAudioPackPath() : _dongbeiAudioPackPath.value
+                    elide:              Text.ElideMiddle
+                }
+            }
+
+            QGCButton {
+                text:       qsTr("Browse")
+                onClicked:  dongbeiAudioPackBrowseDialog.openForLoad()
+                QGCFileDialog {
+                    id:                 dongbeiAudioPackBrowseDialog
+                    title:              qsTr("Choose Dongbei audio pack folder")
+                    folder:             _dongbeiAudioPackPath.rawValue === "" ? _appSettings.defaultDongbeiAudioPackPath() : _dongbeiAudioPackPath.rawValue
+                    selectFolder:       true
+                    onAcceptedForLoad:  (file) => _dongbeiAudioPackPath.rawValue = file
+                }
+            }
+
+            QGCButton {
+                text:       qsTr("Test Audio Pack")
+                onClicked:  mainWindow.showMessageDialog(qsTr("Dongbei Audio Pack"), _appSettings.testDongbeiAudioPack())
+            }
         }
 
         FactCheckBoxSlider {

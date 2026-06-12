@@ -34,6 +34,14 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
 {
     qCDebug(CompInfoParamLog) << "setJson: metadataJsonFileName" << metadataJsonFileName;
 
+    if (compId == MAV_COMP_ID_AUTOPILOT1 && vehicle->firmwareType() == MAV_AUTOPILOT_PX4) {
+        // This custom build ships translated PX4 parameter descriptions in the
+        // built-in XML metadata. Keep using that instead of vehicle-provided JSON,
+        // which is normally English and would override the XML.
+        _noJsonMetadata = true;
+        return;
+    }
+
     if (metadataJsonFileName.isEmpty()) {
         // This will fall back to using the old FirmwarePlugin mechanism for parameter meta data.
         // In this case paramter metadata is loaded through the _parameterMajorVersionKnown call which happens after parameter are downloaded
@@ -164,6 +172,14 @@ QString CompInfoParam::_parameterMetaDataFile(Vehicle* vehicle, MAV_AUTOPILOT fi
     if (firmwareType != MAV_AUTOPILOT_PX4) {
         return fwPlugin->_internalParameterMetaDataFile(vehicle);
     } else {
+        // This custom Chinese PX4 build must always use the bundled XML metadata.
+        // Older QGC/PX4 metadata cached in the settings directory is commonly
+        // English and can otherwise override the edited resource.
+        const QString forcedInternalMetaDataFile = fwPlugin->_internalParameterMetaDataFile(vehicle);
+        fwPlugin->_getParameterMetaDataVersionInfo(forcedInternalMetaDataFile, majorVersion, minorVersion);
+        qCDebug(CompInfoParamLog) << "Custom PX4 metadata forced to internal file:major:minor" << forcedInternalMetaDataFile << majorVersion << minorVersion;
+        return forcedInternalMetaDataFile;
+
         // Only PX4 support the old style cached metadata
         QSettings   settings;
         QDir        cacheDir = QFileInfo(settings.fileName()).dir();

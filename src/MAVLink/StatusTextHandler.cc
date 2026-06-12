@@ -8,6 +8,7 @@
  ****************************************************************************/
 
 #include "StatusTextHandler.h"
+#include "ChineseMessageTranslator.h"
 #include <QGCLoggingCategory.h>
 
 #include <QtCore/QTimer>
@@ -139,13 +140,14 @@ void StatusTextHandler::resetErrorLevelMessages()
 
 void StatusTextHandler::handleHTMLEscapedTextMessage(MAV_COMPONENT compId, MAV_SEVERITY severity, const QString &text, const QString &description)
 {
-    QString htmlText(text);
+    const QString translatedText = ChineseMessageTranslator::explain(text);
+    QString htmlText = translatedText;
 
     (void) htmlText.replace("\n", "<br/>");
 
     // TODO: handle text + description separately in the UI
     if (!description.isEmpty()) {
-        QString htmlDescription(description);
+        QString htmlDescription = ChineseMessageTranslator::explain(description);
         (void) htmlDescription.replace("\n", "<br/>");
         (void) htmlText.append(QStringLiteral("<br/><small><small>"));
         (void) htmlText.append(htmlDescription);
@@ -191,35 +193,35 @@ void StatusTextHandler::handleHTMLEscapedTextMessage(MAV_COMPONENT compId, MAV_S
     QString severityText;
     switch (severity) {
         case MAV_SEVERITY_EMERGENCY:
-            severityText = tr("EMERGENCY");
+            severityText = QStringLiteral("\u7d27\u6025");
             break;
 
         case MAV_SEVERITY_ALERT:
-            severityText = tr("ALERT");
+            severityText = QStringLiteral("\u4e25\u91cd\u544a\u8b66");
             break;
 
         case MAV_SEVERITY_CRITICAL:
-            severityText = tr("Critical");
+            severityText = QStringLiteral("\u4e25\u91cd");
             break;
 
         case MAV_SEVERITY_ERROR:
-            severityText = tr("Error");
+            severityText = QStringLiteral("\u9519\u8bef");
             break;
 
         case MAV_SEVERITY_WARNING:
-            severityText = tr("Warning");
+            severityText = QStringLiteral("\u544a\u8b66");
             break;
 
         case MAV_SEVERITY_NOTICE:
-            severityText = tr("Notice");
+            severityText = QStringLiteral("\u6ce8\u610f");
             break;
 
         case MAV_SEVERITY_INFO:
-            severityText = tr("Info");
+            severityText = QStringLiteral("\u4fe1\u606f");
             break;
 
         case MAV_SEVERITY_DEBUG:
-            severityText = tr("Debug");
+            severityText = QStringLiteral("\u8c03\u8bd5");
             break;
 
         default:
@@ -236,7 +238,7 @@ void StatusTextHandler::handleHTMLEscapedTextMessage(MAV_COMPONENT compId, MAV_S
 
     const QString formatText = QString("<font style=\"%1\">[%2 %3] %4: %5</font><br/>").arg(style, dateString, compString, severityText, htmlText);
 
-    StatusText* const message = new StatusText(compId, severity, text);
+    StatusText* const message = new StatusText(compId, severity, translatedText);
     message->setFormatedText(formatText);
 
     emit newFormattedMessage(formatText);

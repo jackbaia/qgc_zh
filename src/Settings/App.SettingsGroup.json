@@ -87,6 +87,22 @@
     "default":     false
 },
 {
+    "name":             "voiceStyle",
+    "shortDesc": "Voice style",
+    "longDesc":  "Controls how QGroundControl plays spoken alerts.",
+    "type":             "uint32",
+    "enumStrings":      "System TTS,Chinese Mandarin TTS,Dongbei audio pack first",
+    "enumValues":       "0,1,2",
+    "default":          0
+},
+{
+    "name":             "dongbeiAudioPackPath",
+    "shortDesc": "Dongbei audio pack path",
+    "longDesc":  "Folder containing manifest.json and event wav files for the Dongbei audio pack. Leave empty to use the default audio/dongbei folder next to QGroundControl.",
+    "type":             "string",
+    "default":          ""
+},
+{
     "name":             "virtualJoystick",
     "shortDesc": "Show virtual joystick",
     "longDesc":  "If this option is enabled the virtual joystick will be shown on the Fly view.",
