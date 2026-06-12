@@ -55,10 +55,8 @@ Q_APPLICATION_STATIC(AudioOutput, _audioOutput);
 AudioOutput::AudioOutput(QObject *parent)
     : QObject(parent)
     , _engine(new QTextToSpeech(QStringLiteral("none"), this))
-    , _audioPackEffect(new QSoundEffect(this))
 {
     // qCDebug(AudioOutputLog) << this;
-    _audioPackEffect->setLoopCount(1);
 }
 
 AudioOutput::~AudioOutput()
@@ -121,11 +119,6 @@ void AudioOutput::init(Fact *mutedFact, Fact *voiceStyleFact, Fact *audioPackPat
             _manifestEventFiles.clear();
         });
     }
-    (void) connect(_audioPackEffect, &QSoundEffect::statusChanged, this, [this]() {
-        if (_audioPackEffect->status() == QSoundEffect::Error) {
-            qCWarning(AudioOutputLog) << "Audio pack playback error:" << _audioPackEffect->source();
-        }
-    });
 
     if (AudioOutputLog().isDebugEnabled()) {
         (void) connect(_engine, &QTextToSpeech::stateChanged, this, [this](QTextToSpeech::State state) {
@@ -156,7 +149,9 @@ void AudioOutput::setMuted(bool muted)
 {
     if (_muted.exchange(muted) != muted) {
         (void) QMetaObject::invokeMethod(_engine, "setVolume", Qt::AutoConnection, muted ? 0.0 : 1.0);
-        _audioPackEffect->setVolume(muted ? 0.0f : 1.0f);
+        if (_audioPackEffect) {
+            _audioPackEffect->setVolume(muted ? 0.0f : 1.0f);
+        }
         qCDebug(AudioOutputLog) << "AudioOutput muted state set to:" << muted;
     }
 }
@@ -176,7 +171,9 @@ void AudioOutput::say(const QString &text, TextMods textMods)
 
     if (_textQueueSize >= kMaxTextQueueSize) {
         (void) QMetaObject::invokeMethod(_engine, "stop", Qt::AutoConnection, QTextToSpeech::BoundaryHint::Default);
-        _audioPackEffect->stop();
+        if (_audioPackEffect) {
+            _audioPackEffect->stop();
+        }
         _textQueueSize = 0;
         qCWarning(AudioOutputLog) << "Text queue exceeded maximum size. Stopped current speech.";
     }
@@ -364,6 +361,17 @@ bool AudioOutput::_playAudioPackEvent(const QString &eventKey)
     if (audioFile.isEmpty() || !QFileInfo::exists(audioFile)) {
         qCDebug(AudioOutputLog) << "Audio pack file not found for event:" << eventKey << audioFile;
         return false;
+    }
+
+    if (!_audioPackEffect) {
+        _audioPackEffect = new QSoundEffect(this);
+        _audioPackEffect->setLoopCount(1);
+        _audioPackEffect->setVolume(_muted ? 0.0f : 1.0f);
+        (void) connect(_audioPackEffect, &QSoundEffect::statusChanged, this, [this]() {
+            if (_audioPackEffect && (_audioPackEffect->status() == QSoundEffect::Error)) {
+                qCWarning(AudioOutputLog) << "Audio pack playback error:" << _audioPackEffect->source();
+            }
+        });
     }
 
     _audioPackEffect->stop();
