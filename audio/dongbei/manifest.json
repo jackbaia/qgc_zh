@@ -1,0 +1,32 @@
+{
+  "name": "dongbei_audio_pack",
+  "displayName": "东北话语音包",
+  "version": "1.0.0",
+  "events": {
+    "arm_success": { "file": "arm_success.wav", "fallbackText": "解锁成功" },
+    "disarm": { "file": "disarm.wav", "fallbackText": "已经上锁" },
+    "takeoff": { "file": "takeoff.wav", "fallbackText": "开始起飞" },
+    "landing": { "file": "landing.wav", "fallbackText": "准备降落" },
+    "mode_manual": { "file": "mode_manual.wav", "fallbackText": "进入手动模式" },
+    "mode_position": { "file": "mode_position.wav", "fallbackText": "进入位置模式" },
+    "mode_altitude": { "file": "mode_altitude.wav", "fallbackText": "进入高度模式" },
+    "mode_stabilized": { "file": "mode_stabilized.wav", "fallbackText": "进入自稳模式" },
+    "mode_offboard": { "file": "mode_offboard.wav", "fallbackText": "进入外部控制模式" },
+    "mode_rtl": { "file": "mode_rtl.wav", "fallbackText": "开始返航" },
+    "mode_mission": { "file": "mode_mission.wav", "fallbackText": "开始执行航线任务" },
+    "battery_low": { "file": "battery_low.wav", "fallbackText": "电池电量低" },
+    "battery_critical": { "file": "battery_critical.wav", "fallbackText": "电池电量严重不足" },
+    "gps_lost": { "file": "gps_lost.wav", "fallbackText": "GPS 信号丢失" },
+    "gps_recovered": { "file": "gps_recovered.wav", "fallbackText": "GPS 信号恢复" },
+    "rc_lost": { "file": "rc_lost.wav", "fallbackText": "遥控信号丢失" },
+    "rc_recovered": { "file": "rc_recovered.wav", "fallbackText": "遥控信号恢复" },
+    "failsafe": { "file": "failsafe.wav", "fallbackText": "失效保护已触发" },
+    "prearm_failed": { "file": "prearm_failed.wav", "fallbackText": "解锁检查失败" },
+    "ekf_warning": { "file": "ekf_warning.wav", "fallbackText": "EKF 状态估计异常" },
+    "compass_error": { "file": "compass_error.wav", "fallbackText": "磁罗盘错误" },
+    "airspeed_warning": { "file": "airspeed_warning.wav", "fallbackText": "空速数据异常" },
+    "emergency_kill": { "file": "emergency_kill.wav", "fallbackText": "紧急停机" },
+    "log_analysis_started": { "file": "log_analysis_started.wav", "fallbackText": "开始分析飞行日志" },
+    "log_analysis_finished": { "file": "log_analysis_finished.wav", "fallbackText": "日志分析完成" }
+  }
+}
