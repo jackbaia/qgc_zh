@@ -53,6 +53,11 @@ execute_process(
 )
 # cmake_print_variables(QGC_APP_VERSION)
 
+if(QGC_APP_VERSION_OVERRIDE)
+    set(QGC_APP_VERSION_STR "${QGC_APP_VERSION_OVERRIDE}")
+    set(QGC_APP_VERSION "v${QGC_APP_VERSION_OVERRIDE}")
+endif()
+
 execute_process(
     COMMAND ${GIT_EXECUTABLE} log -1 --format=%aI ${QGC_APP_VERSION}
     WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}

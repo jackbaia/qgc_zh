@@ -16,10 +16,11 @@ set(QGC_ORG_NAME "QGroundControl" CACHE STRING "Org Name")
 set(QGC_ORG_DOMAIN "qgroundcontrol.com" CACHE STRING "Domain")
 set(QGC_PACKAGE_NAME "org.mavlink.qgroundcontrol" CACHE STRING "Package Name")
 set(QGC_SETTINGS_VERSION "9" CACHE STRING "Settings Version") # If you need to make an incompatible changes to stored settings, bump this version number up by 1. This will caused store settings to be cleared on next boot.
+set(QGC_APP_VERSION_OVERRIDE "5.0.8" CACHE STRING "Override application version for custom release builds")
 
 # Build
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
-option(QGC_STABLE_BUILD "Stable Build" OFF)
+option(QGC_STABLE_BUILD "Stable Build" ON)
 option(QGC_USE_CACHE "Use Build Caching" ON)
 cmake_dependent_option(QGC_BUILD_TESTING "Enable testing" ON "CMAKE_BUILD_TYPE STREQUAL Debug" OFF)
 cmake_dependent_option(QGC_DEBUG_QML "Build QGroundControl with QML debugging/profiling support." OFF "CMAKE_BUILD_TYPE STREQUAL Debug" OFF)
