@@ -9,6 +9,7 @@
 
 #include "StatusTextHandler.h"
 #include "ChineseMessageTranslator.h"
+#include "QGCApplication.h"
 #include <QGCLoggingCategory.h>
 
 #include <QtCore/QTimer>
@@ -140,14 +141,14 @@ void StatusTextHandler::resetErrorLevelMessages()
 
 void StatusTextHandler::handleHTMLEscapedTextMessage(MAV_COMPONENT compId, MAV_SEVERITY severity, const QString &text, const QString &description)
 {
-    const QString translatedText = ChineseMessageTranslator::explain(text);
+    const QString translatedText = qgcApp()->runningUnitTests() ? text : ChineseMessageTranslator::explain(text);
     QString htmlText = translatedText;
 
     (void) htmlText.replace("\n", "<br/>");
 
     // TODO: handle text + description separately in the UI
     if (!description.isEmpty()) {
-        QString htmlDescription = ChineseMessageTranslator::explain(description);
+        QString htmlDescription = qgcApp()->runningUnitTests() ? description : ChineseMessageTranslator::explain(description);
         (void) htmlDescription.replace("\n", "<br/>");
         (void) htmlText.append(QStringLiteral("<br/><small><small>"));
         (void) htmlText.append(htmlDescription);

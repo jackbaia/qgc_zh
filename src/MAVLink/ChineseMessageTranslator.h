@@ -145,7 +145,7 @@ static inline QString explain(QString text)
     const QRegularExpression preflightRegex(QStringLiteral("^\\s*\\[?preflight\\]?\\s*[:\\-]?\\s*"), QRegularExpression::CaseInsensitiveOption);
     text.replace(preflightRegex, QStringLiteral("\u8d77\u98de\u524d\u68c0\u67e5: "));
 
-    const QRegularExpression paramMissingRegex(QStringLiteral("\\b([A-Z][A-Z0-9_]{2,})\\s+\\u7f3a\\u5931"), QRegularExpression::CaseInsensitiveOption);
+    const QRegularExpression paramMissingRegex(QStringLiteral("\\b([A-Z][A-Z0-9_]{2,})\\s+缺失"), QRegularExpression::CaseInsensitiveOption);
     text.replace(paramMissingRegex, QStringLiteral("\u7f3a\u5931\u53c2\u6570 \\1"));
 
     const QString flightControllerReportPrefix = QStringLiteral("\u98de\u63a7\u62a5\u544a: ");

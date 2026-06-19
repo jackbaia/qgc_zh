@@ -218,9 +218,16 @@ void QGCApplication::setLanguage()
     _locale = QLocale::system();
     qCDebug(QGCApplicationLog) << "System reported locale:" << _locale << "; Name" << _locale.name() << "; Preffered (used in maps): " << (QLocale::system().uiLanguages().length() > 0 ? QLocale::system().uiLanguages()[0] : "None");
 
-    // Custom Chinese build: always prefer Simplified Chinese for the UI,
-    // regardless of Windows locale or a previous QGC language setting.
-    _locale = QLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China);
+    if (runningUnitTests()) {
+        const QLocale::Language possibleLocale = AppSettings::_qLocaleLanguageEarlyAccess();
+        if (possibleLocale != QLocale::AnyLanguage) {
+            _locale = QLocale(possibleLocale);
+        }
+    } else {
+        // Custom Chinese build: always prefer Simplified Chinese for the UI,
+        // regardless of Windows locale or a previous QGC language setting.
+        _locale = QLocale(QLocale::Chinese, QLocale::SimplifiedChineseScript, QLocale::China);
+    }
     //-- We have specific fonts for Korean
     if (_locale == QLocale::Korean) {
         qCDebug(QGCApplicationLog) << "Loading Korean fonts" << _locale.name();
