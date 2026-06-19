@@ -4297,7 +4297,6 @@ void Vehicle::_textMessageReceived(MAV_COMPONENT componentid, MAV_SEVERITY sever
     const bool ardupilotPrearm = text.startsWith(QStringLiteral("PreArm"));
     const bool px4Prearm = text.startsWith(QStringLiteral("preflight"), Qt::CaseInsensitive) && (severity >= MAV_SEVERITY::MAV_SEVERITY_CRITICAL);
     QString translatedText = ChineseMessageTranslator::explain(text);
-    const QString translatedDescription = ChineseMessageTranslator::explain(description);
     if (ardupilotPrearm || px4Prearm) {
         auto eventData = _events.find(componentid);
         if (eventData != _events.end()) {
@@ -4332,7 +4331,9 @@ void Vehicle::_textMessageReceived(MAV_COMPONENT componentid, MAV_SEVERITY sever
         _say(translatedText);
     }
 
-    emit textMessageReceived(id(), componentid, severity, translatedText, translatedDescription);
+    // Setup controllers parse protocol-defined English status text. Keep this
+    // signal raw and translate only the user-facing presentation paths.
+    emit textMessageReceived(id(), componentid, severity, text, description);
     m_statusTextHandler->handleHTMLEscapedTextMessage(componentid, severity, text.toHtmlEscaped(), description);
 }
 
