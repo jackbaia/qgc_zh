@@ -34,14 +34,6 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
 {
     qCDebug(CompInfoParamLog) << "setJson: metadataJsonFileName" << metadataJsonFileName;
 
-    if (compId == MAV_COMP_ID_AUTOPILOT1 && vehicle->firmwareType() == MAV_AUTOPILOT_PX4) {
-        // This custom build ships translated PX4 parameter descriptions in the
-        // built-in XML metadata. Keep using that instead of vehicle-provided JSON,
-        // which is normally English and would override the XML.
-        _noJsonMetadata = true;
-        return;
-    }
-
     if (metadataJsonFileName.isEmpty()) {
         // This will fall back to using the old FirmwarePlugin mechanism for parameter meta data.
         // In this case paramter metadata is loaded through the _parameterMajorVersionKnown call which happens after parameter are downloaded
@@ -75,6 +67,13 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
     }
 
     QJsonArray rgParameters = jsonObj[_jsonParametersKey].toArray();
+
+    FirmwarePlugin* firmwarePlugin = vehicle->firmwarePlugin();
+    if ((compId == MAV_COMP_ID_AUTOPILOT1) && (vehicle->firmwareType() == MAV_AUTOPILOT_PX4) && !_localizedParameterMetaData) {
+        const QString internalMetaDataFile = firmwarePlugin->_internalParameterMetaDataFile(vehicle);
+        _localizedParameterMetaData = firmwarePlugin->_loadParameterMetaData(internalMetaDataFile);
+    }
+
     for (QJsonValue parameterValue: rgParameters) {
         QMap<QString, QString> emptyDefineMap;
 
@@ -84,6 +83,25 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
         }
 
         FactMetaData* newMetaData = FactMetaData::createFromJsonObject(parameterValue.toObject(), emptyDefineMap, this);
+
+        // Keep protocol capabilities, enum values and limits from the vehicle's
+        // current metadata. Only overlay translated human-facing descriptions
+        // from the bundled PX4 XML when a matching entry exists.
+        if (_localizedParameterMetaData) {
+            FactMetaData* localizedMetaData = firmwarePlugin->_getMetaDataForFact(
+                _localizedParameterMetaData,
+                newMetaData->name(),
+                newMetaData->type(),
+                vehicle->vehicleType());
+            if (localizedMetaData) {
+                if (!localizedMetaData->shortDescription().isEmpty()) {
+                    newMetaData->setShortDescription(localizedMetaData->shortDescription());
+                }
+                if (!localizedMetaData->longDescription().isEmpty()) {
+                    newMetaData->setLongDescription(localizedMetaData->longDescription());
+                }
+            }
+        }
 
         if (newMetaData->name().contains(_indexedNameTag)) {
             _indexedNameMetaDataList.append(RegexFactMetaDataPair_t(newMetaData->name(), newMetaData));

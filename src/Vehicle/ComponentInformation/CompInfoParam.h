@@ -47,6 +47,7 @@ private:
     FactMetaData::NameToMetaDataMap_t   _nameToMetaDataMap;
     QList<RegexFactMetaDataPair_t>      _indexedNameMetaDataList;
     QObject*                            _opaqueParameterMetaData    = nullptr;
+    QObject*                            _localizedParameterMetaData = nullptr;
 
     static constexpr const char* _jsonParametersKey           = "parameters";
     static constexpr const char* _cachedMetaDataFilePrefix    = "ParameterFactMetaData";
