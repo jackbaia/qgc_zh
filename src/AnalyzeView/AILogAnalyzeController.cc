@@ -28,6 +28,7 @@
 #include <QtNetwork/QNetworkRequest>
 
 #include <cstring>
+#include <limits>
 
 QGC_LOGGING_CATEGORY(AILogAnalyzeControllerLog, "qgc.analyzeview.ailoganalyzecontroller")
 
@@ -293,26 +294,25 @@ void AILogAnalyzeController::_setActiveVehicle(Vehicle *vehicle)
         return;
     }
 
-    if (_vehicle) {
-        (void) disconnect(_vehicle, &Vehicle::logEntry, this, &AILogAnalyzeController::_logEntry);
-        (void) disconnect(_vehicle, &Vehicle::logData, this, &AILogAnalyzeController::_logData);
-    }
+    // Vehicle replacement can happen while the old QObject is being torn down
+    // (for example after a reboot command). Disconnect by connection handle and
+    // do not send another MAVLink command through the closing Vehicle.
+    (void) QObject::disconnect(_logEntryConnection);
+    (void) QObject::disconnect(_logDataConnection);
+    _logEntryConnection = {};
+    _logDataConnection = {};
 
-    if ((_operation == Operation::Listing) || (_operation == Operation::Downloading)) {
-        _requestLogEnd();
-    }
-
-    _vehicle = vehicle;
     _timer->stop();
     _downloadData.reset();
+    _vehicle = vehicle;
     _setOperation(Operation::Idle);
     _setProgress(0.0);
     _clearLogEntries();
     setSelectedLogIndex(-1);
 
     if (_vehicle) {
-        (void) connect(_vehicle, &Vehicle::logEntry, this, &AILogAnalyzeController::_logEntry);
-        (void) connect(_vehicle, &Vehicle::logData, this, &AILogAnalyzeController::_logData);
+        _logEntryConnection = connect(_vehicle, &Vehicle::logEntry, this, &AILogAnalyzeController::_logEntry);
+        _logDataConnection = connect(_vehicle, &Vehicle::logData, this, &AILogAnalyzeController::_logData);
         _setStatusText(QStringLiteral("\u5df2\u8fde\u63a5\u98de\u63a7"));
     } else {
         _setStatusText(QStringLiteral("\u672a\u8fde\u63a5\u98de\u63a7"));
@@ -370,6 +370,10 @@ void AILogAnalyzeController::_logData(uint32_t offset, uint16_t id, uint8_t coun
         return;
     }
 
+    if ((id < _apmOffset) || !data) {
+        qCWarning(AILogAnalyzeControllerLog) << "Ignored invalid log data packet" << id << count << data;
+        return;
+    }
     id -= _apmOffset;
     if (_downloadData->id != id) {
         qCWarning(AILogAnalyzeControllerLog) << "Received log data for wrong log" << id << "expected" << _downloadData->id;
@@ -381,7 +385,7 @@ void AILogAnalyzeController::_logData(uint32_t offset, uint16_t id, uint8_t coun
         return;
     }
 
-    if (!_downloadData->entry || (offset > _downloadData->entry->sizeBytes())) {
+    if (!_downloadData->entry || (offset >= _downloadData->entry->sizeBytes())) {
         _finishDownloadWithError(QStringLiteral("\u63a5\u6536\u5230\u8d85\u51fa\u9884\u671f\u8303\u56f4\u7684\u65e5\u5fd7\u6570\u636e"));
         return;
     }
@@ -398,7 +402,8 @@ void AILogAnalyzeController::_logData(uint32_t offset, uint16_t id, uint8_t coun
         return;
     }
 
-    const int bytesToCopy = qMin<int>(count, _downloadData->bytes.size() - static_cast<int>(offset));
+    const int packetBytes = qMin<int>(count, MAVLINK_MSG_LOG_DATA_FIELD_DATA_LEN);
+    const int bytesToCopy = qMin(packetBytes, _downloadData->bytes.size() - static_cast<int>(offset));
     if (bytesToCopy <= 0) {
         return;
     }
@@ -836,6 +841,15 @@ bool AILogAnalyzeController::_logComplete() const
 
 void AILogAnalyzeController::_startDownload(AILogEntry *entry)
 {
+    if (!entry || (entry->sizeBytes() == 0)) {
+        _finishDownloadWithError(QStringLiteral("\u65e5\u5fd7\u5927\u5c0f\u65e0\u6548，\u65e0\u6cd5\u4e0b\u8f7d"));
+        return;
+    }
+    if (entry->sizeBytes() > static_cast<uint>(std::numeric_limits<int>::max())) {
+        _finishDownloadWithError(QStringLiteral("\u65e5\u5fd7\u8fc7\u5927，\u65e0\u6cd5\u5728\u5185\u5b58\u4e2d\u5b89\u5168\u5904\u7406"));
+        return;
+    }
+
     if (!entry || entry->sizeBytes() == 0) {
         _setErrorText(QStringLiteral("\u65e5\u5fd7\u5927\u5c0f\u4e3a 0\uff0c\u65e0\u6cd5\u5206\u6790"));
         return;

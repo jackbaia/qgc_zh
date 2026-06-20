@@ -176,6 +176,8 @@ private:
     QmlObjectListModel *_logEntries = nullptr;
     QTimer *_timer = nullptr;
     QPointer<Vehicle> _vehicle;
+    QMetaObject::Connection _logEntryConnection;
+    QMetaObject::Connection _logDataConnection;
     std::unique_ptr<MemoryDownloadData> _downloadData;
 
     QString _resultText;

@@ -18,11 +18,61 @@
 
 #include <QtCore/QJsonDocument>
 #include <QtCore/QJsonArray>
+#include <QtCore/QFile>
+#include <QtCore/QHash>
 #include <QtCore/QRegularExpression>
 #include <QtCore/QRegularExpressionMatch>
+#include <QtCore/QXmlStreamReader>
 #include <QtCore/QDir>
 
 QGC_LOGGING_CATEGORY(CompInfoParamLog, "CompInfoParamLog")
+
+namespace {
+
+using LocalizedDescriptions = QPair<QString, QString>;
+
+const QHash<QString, LocalizedDescriptions>& _px4LocalizedDescriptions()
+{
+    static const QHash<QString, LocalizedDescriptions> descriptions = []() {
+        QHash<QString, LocalizedDescriptions> result;
+        QFile file(QStringLiteral(":/FirmwarePlugin/PX4/PX4ParameterFactMetaData.xml"));
+        if (!file.open(QIODevice::ReadOnly)) {
+            qCWarning(CompInfoParamLog) << "Unable to open localized PX4 parameter metadata" << file.errorString();
+            return result;
+        }
+
+        QXmlStreamReader xml(&file);
+        QString name;
+        QString shortDescription;
+        QString longDescription;
+        while (!xml.atEnd()) {
+            xml.readNext();
+            if (xml.isStartElement()) {
+                if (xml.name() == QStringLiteral("parameter")) {
+                    name = xml.attributes().value(QStringLiteral("name")).toString();
+                    shortDescription.clear();
+                    longDescription.clear();
+                } else if (!name.isEmpty() && (xml.name() == QStringLiteral("short_desc"))) {
+                    shortDescription = xml.readElementText().replace('\n', ' ');
+                } else if (!name.isEmpty() && (xml.name() == QStringLiteral("long_desc"))) {
+                    longDescription = xml.readElementText().replace('\n', ' ');
+                }
+            } else if (xml.isEndElement() && (xml.name() == QStringLiteral("parameter")) && !name.isEmpty()) {
+                result.insert(name, qMakePair(shortDescription, longDescription));
+                name.clear();
+            }
+        }
+
+        if (xml.hasError()) {
+            qCWarning(CompInfoParamLog) << "Invalid localized PX4 parameter metadata" << xml.errorString();
+            result.clear();
+        }
+        return result;
+    }();
+    return descriptions;
+}
+
+} // namespace
 
 CompInfoParam::CompInfoParam(uint8_t compId, Vehicle* vehicle, QObject* parent)
     : CompInfo(COMP_METADATA_TYPE_PARAMETER, compId, vehicle, parent)
@@ -67,12 +117,8 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
     }
 
     QJsonArray rgParameters = jsonObj[_jsonParametersKey].toArray();
-
-    FirmwarePlugin* firmwarePlugin = vehicle->firmwarePlugin();
-    if ((compId == MAV_COMP_ID_AUTOPILOT1) && (vehicle->firmwareType() == MAV_AUTOPILOT_PX4) && !_localizedParameterMetaData) {
-        const QString internalMetaDataFile = firmwarePlugin->_internalParameterMetaDataFile(vehicle);
-        _localizedParameterMetaData = firmwarePlugin->_loadParameterMetaData(internalMetaDataFile);
-    }
+    const bool overlayPX4Descriptions = (compId == MAV_COMP_ID_AUTOPILOT1) && (vehicle->firmwareType() == MAV_AUTOPILOT_PX4);
+    const QHash<QString, LocalizedDescriptions>* localizedDescriptions = overlayPX4Descriptions ? &_px4LocalizedDescriptions() : nullptr;
 
     for (QJsonValue parameterValue: rgParameters) {
         QMap<QString, QString> emptyDefineMap;
@@ -84,21 +130,14 @@ void CompInfoParam::setJson(const QString& metadataJsonFileName)
 
         FactMetaData* newMetaData = FactMetaData::createFromJsonObject(parameterValue.toObject(), emptyDefineMap, this);
 
-        // Keep protocol capabilities, enum values and limits from the vehicle's
-        // current metadata. Only overlay translated human-facing descriptions
-        // from the bundled PX4 XML when a matching entry exists.
-        if (_localizedParameterMetaData) {
-            FactMetaData* localizedMetaData = firmwarePlugin->_getMetaDataForFact(
-                _localizedParameterMetaData,
-                newMetaData->name(),
-                newMetaData->type(),
-                vehicle->vehicleType());
-            if (localizedMetaData) {
-                if (!localizedMetaData->shortDescription().isEmpty()) {
-                    newMetaData->setShortDescription(localizedMetaData->shortDescription());
+        if (localizedDescriptions) {
+            const auto descriptionsIt = localizedDescriptions->constFind(newMetaData->name());
+            if (descriptionsIt != localizedDescriptions->cend()) {
+                if (!descriptionsIt->first.isEmpty()) {
+                    newMetaData->setShortDescription(descriptionsIt->first);
                 }
-                if (!localizedMetaData->longDescription().isEmpty()) {
-                    newMetaData->setLongDescription(localizedMetaData->longDescription());
+                if (!descriptionsIt->second.isEmpty()) {
+                    newMetaData->setLongDescription(descriptionsIt->second);
                 }
             }
         }
